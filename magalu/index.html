@@ -203,7 +203,14 @@ input[type=date].fdate::-webkit-calendar-picker-indicator{position:absolute;top:
  .tl-btn-active { background:var(--green);border-color:var(--green);color:#fff;font-weight:600; }
  .tl-cell:hover { transform:scale(1.3);box-shadow:0 2px 8px rgba(27,59,111,0.4);z-index:2;position:relative; }
  .tl-row { transition:.1s; }
- /* V14: tabnav — segmented pill control, mais chamativo */
+ 
+.tl-insights{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;padding:14px 16px;background:var(--bg2);border-radius:8px}
+.tl-insight-line{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--tx);line-height:1.55}
+.tl-insight-icon{font-size:16px;flex-shrink:0;line-height:1.4;width:22px;text-align:center}
+.tl-insight-good{color:#0F4729}
+.tl-insight-bad{color:#7F1D1D}
+.tl-insight-warn{color:#78350F}
+/* V14: tabnav — segmented pill control, mais chamativo */
  .tabnav{display:inline-flex;gap:4px;margin:4px 0 22px;padding:5px;background:linear-gradient(180deg,#F4F6FB 0%,#EAEEF6 100%);border:1px solid #D4DBEA;border-radius:14px;flex-wrap:wrap;box-shadow:0 1px 2px rgba(15,23,42,0.04),inset 0 1px 0 rgba(255,255,255,0.6)}
  .tab-btn{all:unset;cursor:pointer;padding:10px 22px;font-size:13px;font-weight:600;color:#475569;border-radius:10px;transition:color .15s,background .15s,box-shadow .2s,transform .15s;letter-spacing:.01em;display:inline-flex;align-items:center;gap:8px;position:relative}
  .tab-btn::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#CBD5E1;transition:background .15s,box-shadow .15s}
@@ -3223,20 +3230,11 @@ function renderTimeline() {
  const container = document.getElementById('tl-container');
  if (!container) return;
 
- // LEITURAS lookup (pct_leu por vendedor — % de feedbacks lidos)
  const LEIT_MAP = {};
  (typeof LEIT_VEND !== 'undefined' ? LEIT_VEND : []).forEach(x => { LEIT_MAP[x.vendedor] = x.pct_leu; });
 
- // Vendedores especiais — sempre verde + estrela
- const SPECIAL_VENDORS = new Set([
-  'Nelcilene Ribeiro Celestino',
-  'Cleonice Aparecida da Silva',
-  'Marlos Vin\u00edcius de Souza Silva'
- ]);
- const SPECIAL_GREEN = '#16a34a';
- const REGULAR_GRAY = '#94a3b8';
+ const SPECIAL_VENDORS = new Set(['Nelcilene Ribeiro Celestino','Cleonice Aparecida da Silva','Marlos Vin\u00edcius de Souza Silva']);
 
- // Color por contagem (reference palette)
  const cellColor = (n) => {
   if (n === 0) return '#e8f0fb';
   if (n <= 2) return '#b8d0f0';
@@ -3245,22 +3243,22 @@ function renderTimeline() {
   if (n <= 9) return '#1a56a0';
   return '#0a2a55';
  };
- // Pílula da média/dia
- // V13: <1 vermelho · 1–3 amarelo · ≥3 verde
+ const cellTextColor = (n) => {
+  if (n === 0) return '#94a3b8';
+  if (n <= 4) return '#0a2a55';
+  return '#fff';
+ };
  const dailyAvgBg = (avg) => avg < 1 ? '#FEE2E2' : avg < 3 ? '#FEF3C7' : '#D1FAE5';
  const dailyAvgFg = (avg) => avg < 1 ? '#991B1B' : avg < 3 ? '#92400E' : '#065F46';
  const leitColor = (p) => p >= 80 ? '#16a34a' : p >= 70 ? '#d97706' : p > 0 ? '#dc2626' : '#9ca3af';
  const leitBg    = (p) => p >= 80 ? '#dcfce7' : p >= 70 ? '#fef3c7' : p > 0 ? '#fee2e2' : '#f1f5f9';
 
- // Filtros globais
  const globalF = F;
  if (globalF.vend && _tlCity) {
   const vendorCity = (TL_DATA.find(v => v.v === globalF.vend)||{}).city || '';
   if (vendorCity && vendorCity !== _tlCity) {
    _tlCity = '';
-   document.querySelectorAll('.tl-btn').forEach(b => {
-    b.classList.toggle('tl-btn-active', b.dataset.city === '');
-   });
+   document.querySelectorAll('.tl-btn').forEach(b => { b.classList.toggle('tl-btn-active', b.dataset.city === ''); });
   }
  }
 
@@ -3287,7 +3285,6 @@ function renderTimeline() {
    if (globalF.semana || dateFiltered) {
     const sem = globalF.semana ? parseInt(globalF.semana) : null;
     days = v.days.map(day => {
-     // Apply date filter on the cell
      if (globalF.ini && day.d < globalF.ini) return {...day, n:0, ids:[], conv:null};
      if (globalF.fim && day.d > globalF.fim) return {...day, n:0, ids:[], conv:null};
      const dayRows = fraw.filter(r => r.v===v.v && r.d===day.d && (sem ? r.s===sem : true));
@@ -3306,112 +3303,160 @@ function renderTimeline() {
   return;
  }
 
- // Working days
  const HOLIDAYS = new Set(['2026-04-21','2026-05-01']);
  const isSunday = d => new Date(d + 'T12:00:00').getDay() === 0;
- const SETOR_DAYS = TL_DATES.filter(d => !isSunday(d) && !HOLIDAYS.has(d)).length || 1;
  const VENDOR_DAYS = TL_DATES.filter(d => !isSunday(d)).length || 1;
 
- // Order
  const ORDER = ['Eletro','Móveis','Portáteis','Tecnologia'];
- const cities = [...new Set(vendors.map(v => v.city))]
-  .sort((a,b) => (ORDER.indexOf(a)+1||99) - (ORDER.indexOf(b)+1||99));
+ vendors.sort((a,b) => {
+  const oa = ORDER.indexOf(a.city)+1||99, ob = ORDER.indexOf(b.city)+1||99;
+  if (oa !== ob) return oa - ob;
+  return b.total - a.total;
+ });
 
- let out = '';
+ // ── Bullet insights ─────────────────────────────────────────────────────
+ const isAdmin = window.IS_ADMIN || (CURRENT_USER && CURRENT_USER.role === 'admin');
+ let insightsHtml = '';
+ try {
+  if (isAdmin) {
+   // Insights por vendedor
+   const sorted_by_lt = [...vendors].sort((a,b) => (LEIT_MAP[b.v]||0) - (LEIT_MAP[a.v]||0));
+   const top_readers = sorted_by_lt.slice(0,3).filter(v => (LEIT_MAP[v.v]||0) >= 70);
+   const low_readers = sorted_by_lt.filter(v => v.total >= 5 && (LEIT_MAP[v.v]||0) < 30).slice(0,3);
+   const top_volume = [...vendors].sort((a,b) => b.total - a.total).slice(0,3).filter(v => v.total >= 10);
+   const low_volume = vendors.filter(v => v.total < 5);
 
- cities.forEach(city => {
-  const cv = vendors.filter(v => v.city===city).slice().sort((a,b) => b.total - a.total);
-  const sectorTotal = cv.reduce((s,v)=>s+v.total,0);
-  const sectorAvg = sectorTotal / SETOR_DAYS;
-  const sBg = dailyAvgBg(sectorAvg);
-  const sFg = dailyAvgFg(sectorAvg);
+   const items = [];
+   if (top_readers.length) {
+    items.push(`<div class="tl-insight-line tl-insight-good"><span class="tl-insight-icon">✅</span><span><b>Engajamento alto</b> — ${top_readers.map(v => v.short || v.v.split(' ')[0]).join(', ')} ${top_readers.length>1?'estão':'está'} lendo seus feedbacks acima de 70%.</span></div>`);
+   }
+   if (low_readers.length) {
+    items.push(`<div class="tl-insight-line tl-insight-bad"><span class="tl-insight-icon">⚠️</span><span><b>Precisam de atenção em leitura</b> — ${low_readers.map(v => v.short || v.v.split(' ')[0]).join(', ')} ${low_readers.length>1?'leem':'lê'} menos de 30% dos feedbacks. Coaching individual recomendado.</span></div>`);
+   }
+   if (low_volume.length >= 2) {
+    items.push(`<div class="tl-insight-line tl-insight-warn"><span class="tl-insight-icon">📉</span><span><b>Baixo volume de gravações</b> — ${low_volume.length} vendedor${low_volume.length!==1?'es':''} com menos de 5 atendimentos no período. Verificar se gravador está em uso.</span></div>`);
+   } else if (top_volume.length) {
+    items.push(`<div class="tl-insight-line tl-insight-good"><span class="tl-insight-icon">📈</span><span><b>Volume saudável</b> — ${top_volume.map(v => v.short || v.v.split(' ')[0]).join(', ')} ${top_volume.length>1?'lideram':'lidera'} com 10+ atendimentos no período.</span></div>`);
+   }
+   while (items.length < 3) items.push(null);
+   insightsHtml = '<div class="tl-insights">' + items.filter(Boolean).join('') + '</div>';
+  } else {
+   // Insights por setor (gerente)
+   const setores = {};
+   vendors.forEach(v => {
+    const c = v.city || '—';
+    if (!setores[c]) setores[c] = {total:0, vendedores:new Set(), leituras:[]};
+    setores[c].total += v.total;
+    setores[c].vendedores.add(v.v);
+    if (LEIT_MAP[v.v] != null) setores[c].leituras.push(LEIT_MAP[v.v]);
+   });
+   const setEntries = Object.entries(setores).map(([s,v]) => ({
+    setor: s,
+    total: v.total,
+    n_vend: v.vendedores.size,
+    leitura_avg: v.leituras.length ? v.leituras.reduce((a,b)=>a+b,0)/v.leituras.length : 0,
+    avg_dia: v.total / VENDOR_DAYS / Math.max(v.vendedores.size, 1),
+   }));
+   setEntries.sort((a,b) => b.leitura_avg - a.leitura_avg);
+   const top_lt = setEntries.find(s => s.leitura_avg >= 70);
+   const low_lt = setEntries.find(s => s.leitura_avg < 40 && s.n_vend >= 2);
+   const low_vol = setEntries.find(s => s.avg_dia < 1);
 
-  // ── Header de setor (style: store-grp-lbl) ──
-  out += `<div style="margin-bottom:22px">
-   <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--brd)">
-    <span>${city.toUpperCase()}</span>
-    <span style="display:flex;gap:10px;align-items:center;text-transform:none;letter-spacing:normal;font-weight:500;color:#475569">
-     <span style="font-size:11px">total <strong style="color:#1a56a0;font-weight:800">${sectorTotal}</strong> atend.</span>
-     <span style="font-size:11px;background:${sBg};color:${sFg};padding:3px 10px;border-radius:14px;font-weight:700" title="média de atendimentos por dia útil (${SETOR_DAYS} dias úteis)">média ${sectorAvg.toFixed(1)}/dia</span>
-    </span>
-   </div>`;
+   const items = [];
+   if (top_lt) {
+    items.push(`<div class="tl-insight-line tl-insight-good"><span class="tl-insight-icon">✅</span><span><b>${top_lt.setor}</b> está com leitura de feedbacks em <b>${top_lt.leitura_avg.toFixed(0)}%</b> — engajamento alto, manter referência para os outros setores.</span></div>`);
+   }
+   if (low_lt) {
+    items.push(`<div class="tl-insight-line tl-insight-bad"><span class="tl-insight-icon">⚠️</span><span><b>${low_lt.setor}</b> está com leitura em apenas <b>${low_lt.leitura_avg.toFixed(0)}%</b>. Revisar rotina diária de leitura no huddle.</span></div>`);
+   }
+   if (low_vol) {
+    items.push(`<div class="tl-insight-line tl-insight-warn"><span class="tl-insight-icon">📉</span><span><b>${low_vol.setor}</b> com média de <b>${low_vol.avg_dia.toFixed(1)} atendimentos/dia/vendedor</b>. Verificar se o gravador está sendo usado e se há fluxo no setor.</span></div>`);
+   }
+   if (!items.length) items.push('<div class="tl-insight-line tl-insight-warn"><span class="tl-insight-icon">📊</span><span>Acompanhe a tabela abaixo para detalhes por setor.</span></div>');
+   insightsHtml = '<div class="tl-insights">' + items.join('') + '</div>';
+  }
+ } catch(e){ console.warn('insights:', e); }
 
-  // ── Day-of-week header row (sub-colunas — admin) ──
-  const _MES_PT = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const _DOW_PT = ['D','S','T','Q','Q','S','S'];
-  let dayHdr = '';
-  TL_DATES.forEach(d => {
-   const dt = new Date(d + 'T12:00:00');
-   const dia = dt.getDate();
-   const mes = _MES_PT[dt.getMonth()];
-   const dow = _DOW_PT[dt.getDay()];
-   const isHoliday = HOLIDAYS.has(d);
-   const isSun = isSunday(d);
-   const fg = isHoliday ? '#dc2626' : isSun ? '#94a3b8' : '#475569';
-   dayHdr += `<div style="width:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;line-height:1.05" title="${d}"><span style="font-size:8.5px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${dow}</span><span style="font-size:11px;color:${fg};font-weight:700;margin-top:1px">${dia}</span><span style="font-size:8px;color:#94a3b8;margin-top:1px">${mes}</span></div>`;
-  });
-  out += `<div style="display:flex;align-items:flex-end;margin-bottom:6px"><div style="width:230px;flex-shrink:0"></div><div style="display:flex;flex:1;gap:2px;align-items:flex-end;overflow:hidden;padding:0 14px">${dayHdr}</div><div style="min-width:96px;margin-left:14px;flex-shrink:0;font-size:8.5px;color:#94a3b8;text-align:right;text-transform:uppercase;letter-spacing:.5px;font-weight:600">leituras</div></div>`;
+ // ── Build table ─────────────────────────────────────────────────────────
+ // Header row: dates
+ const _MES_PT = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+ const _DOW_PT = ['D','S','T','Q','Q','S','S'];
 
-  // ── Vendor rows ──
-  cv.forEach(v => {
+ let dayHdr = '';
+ TL_DATES.forEach(d => {
+  const dt = new Date(d + 'T12:00:00');
+  const dia = dt.getDate();
+  const mes = _MES_PT[dt.getMonth()];
+  const dow = _DOW_PT[dt.getDay()];
+  const fg = HOLIDAYS.has(d) ? '#dc2626' : isSunday(d) ? '#94a3b8' : '#475569';
+  dayHdr += `<th style="padding:6px 2px;text-align:center;font-weight:600;font-size:9.5px;border-bottom:1px solid var(--bd);min-width:30px;line-height:1.1" title="${d}"><div style="font-size:8.5px;color:#94a3b8;text-transform:uppercase">${dow}</div><div style="font-size:11px;color:${fg};font-weight:700">${dia}</div><div style="font-size:8px;color:#94a3b8">${mes}</div></th>`;
+ });
+
+ // Group vendors by setor for visual sectioning
+ const grouped = {};
+ vendors.forEach(v => {
+  const c = v.city || '—';
+  if (!grouped[c]) grouped[c] = [];
+  grouped[c].push(v);
+ });
+ const orderedCities = Object.keys(grouped).sort((a,b) => (ORDER.indexOf(a)+1||99) - (ORDER.indexOf(b)+1||99));
+
+ let bodyRows = '';
+ orderedCities.forEach(city => {
+  // Setor header row
+  bodyRows += `<tr><td colspan="${5 + TL_DATES.length}" style="padding:14px 12px 8px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.08em;font-size:10px;border-bottom:1px solid var(--bd)">${city}</td></tr>`;
+  grouped[city].forEach(v => {
    const isSpecial = SPECIAL_VENDORS.has(v.v);
    const mediaPerDay = v.total / VENDOR_DAYS;
-   // V13: avatar segue regra da média/dia (vermelho/amarelo/verde)
-   const aColor = isSpecial
-    ? SPECIAL_GREEN
-    : (mediaPerDay >= 3 ? '#16A34A' : (mediaPerDay >= 1 ? '#D97706' : '#DC2626'));
-   const parts = v.v.split(' ').filter(w => w.length >= 2 && /[A-Za-z\u00C0-\u00FF]/.test(w[0]));
-   const initials = (parts.slice(0,2).map(w => w[0]).join('') || v.v.slice(0,2)).toUpperCase();
-   const lowVol = v.total < 5;
    const mBg = dailyAvgBg(mediaPerDay);
    const mFg = dailyAvgFg(mediaPerDay);
    const leituraPct = LEIT_MAP[v.v] != null ? LEIT_MAP[v.v] : 0;
    const lColor = leitColor(leituraPct);
    const lBg = leitBg(leituraPct);
-   const starHtml = isSpecial ? '<span style="position:absolute;top:-4px;right:-4px;font-size:11px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))" data-vendor-star="1">\u2b50</span>' : '';
+   const lowVol = v.total < 5;
 
-   // Cells: 14×22 with 2px gap (matching reference .hm-cell)
    let cellsHtml = '';
    v.days.forEach(day => {
     if (!day.n) {
-     // Em-dash p/ dias sem gravações (override do user)
-     cellsHtml += `<div style="width:14px;height:22px;display:flex;align-items:center;justify-content:center;color:#CBD5E1;font-size:11px;font-weight:700;line-height:1;flex-shrink:0" title="${day.d.slice(5)}: sem gravações">\u2014</div>`;
+     cellsHtml += `<td style="padding:2px;text-align:center;border-bottom:1px solid var(--bd2)" title="${day.d.slice(5)}: sem gravações"><div style="width:30px;height:24px;line-height:24px;color:#CBD5E1;font-size:11px;font-weight:700;margin:0 auto">—</div></td>`;
     } else {
-     const ct = day.conv!==null?` · ${day.conv}% conv`:'';
      window._tlK++; window._tlR[window._tlK]={v:v.v,d:day.d,ids:day.ids};
-     cellsHtml += `<div onclick="tlCellClick(${window._tlK})" style="width:14px;height:22px;border-radius:3px;background:${cellColor(day.n)};cursor:pointer;flex-shrink:0;transition:opacity .15s" title="${day.d.slice(5)}: ${day.n} atend${ct}"></div>`;
+     const ct = day.conv!==null?` · ${day.conv}% conv`:'';
+     const tColor = cellTextColor(day.n);
+     cellsHtml += `<td style="padding:2px;text-align:center;border-bottom:1px solid var(--bd2)"><div onclick="tlCellClick(${window._tlK})" style="width:30px;height:24px;line-height:24px;border-radius:3px;background:${cellColor(day.n)};color:${tColor};cursor:pointer;font-weight:700;font-size:10.5px;margin:0 auto" title="${day.d.slice(5)}: ${day.n} atend${ct}">${day.n}</div></td>`;
     }
    });
 
-   // Read bar (always shown unless lowVol → vol.baixo warning)
-   const readCellHtml = lowVol
-    ? `<div style="min-width:96px;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px"><span style="font-size:16px;line-height:1;color:#d97706" title="Volume insuficiente para taxa confiável">\u26a0</span><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">vol. baixo</div></div>`
-    : `<div style="min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-        <div style="display:flex;align-items:center;gap:6px;width:100%" title="% de feedbacks lidos pelo vendedor">
-         <div style="flex:1;background:${lBg};border-radius:4px;height:8px;overflow:hidden"><div style="width:${leituraPct}%;height:100%;background:${lColor};border-radius:4px"></div></div>
-         <span style="font-size:11px;font-weight:700;color:${lColor};min-width:30px;text-align:right">${leituraPct}%</span>
-        </div>
-        <span style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">leituras</span>
-       </div>`;
+   const starHtml = isSpecial ? '<span style="color:#FBBF24;margin-left:6px" title="Vendedor especial">⭐</span>' : '';
+   const lowVolHtml = lowVol ? '<span style="font-size:13px;color:#d97706;margin-left:6px" title="Volume insuficiente">⚠</span>' : '';
 
-   out += `<div style="display:flex;align-items:center;margin-bottom:8px">
-    <div style="width:230px;display:flex;align-items:center;gap:10px;flex-shrink:0">
-     <div onclick="tlOpenRec('${v.v.replace(/'/g,"\\'")}')" style="position:relative;width:34px;height:34px;border-radius:50%;background:${aColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0;cursor:pointer" title="${isSpecial?'Vendedor especial — ':''}Ver recomendações para ${v.v}" data-vendor-avatar="1">${initials}${starHtml}</div>
-     <div style="overflow:hidden;min-width:0;flex:1">
-      <div data-vendor-name="1" style="font-size:13px;font-weight:600;color:var(--tx);line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis">${v.v}</div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:2px">${v.total} atend. · <span style="background:${mBg};color:${mFg};padding:1px 7px;border-radius:10px;font-weight:700;font-size:10px" title="média de atendimentos por dia útil">${mediaPerDay.toFixed(1)}/dia</span></div>
-     </div>
-    </div>
-    <div style="display:flex;flex:1;gap:2px;align-items:center;overflow:hidden;padding:0 14px">${cellsHtml}</div>
-    <div style="margin-left:14px;flex-shrink:0">${readCellHtml}</div>
-   </div>`;
+   bodyRows += `<tr style="background:${isSpecial?'rgba(251,191,36,0.04)':'transparent'}">
+    <td style="padding:8px 10px;font-weight:600;color:var(--tx);border-bottom:1px solid var(--bd2);font-size:13px"><span onclick="tlOpenRec('${v.v.replace(/'/g,"\\'")}')" style="cursor:pointer">${v.v}</span>${starHtml}</td>
+    <td style="padding:8px;color:var(--tx2);border-bottom:1px solid var(--bd2);font-size:11.5px">${v.city||'—'}</td>
+    <td style="padding:8px;text-align:right;color:var(--tx);font-weight:600;border-bottom:1px solid var(--bd2);font-size:12.5px">${v.total}</td>
+    <td style="padding:8px 12px;text-align:right;border-bottom:1px solid var(--bd2)"><span style="display:inline-block;background:${mBg};color:${mFg};padding:2px 8px;border-radius:9px;font-weight:700;font-size:10.5px">${mediaPerDay.toFixed(1)}/dia</span>${lowVolHtml}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid var(--bd2)"><div style="display:flex;align-items:center;gap:6px;min-width:110px"><div style="flex:1;background:${lBg};border-radius:4px;height:7px;overflow:hidden"><div style="width:${leituraPct}%;height:100%;background:${lColor};border-radius:4px"></div></div><span style="font-size:10.5px;font-weight:700;color:${lColor};min-width:34px;text-align:right">${leituraPct}%</span></div></td>
+    ${cellsHtml}
+   </tr>`;
   });
-
-  out += `</div>`;
  });
 
- container.innerHTML = out;
+ const html = `${insightsHtml}<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11.5px;width:100%;min-width:900px">
+  <thead><tr>
+   <th style="text-align:left;padding:8px 10px;color:var(--tx3);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bd);min-width:200px">Vendedor</th>
+   <th style="text-align:left;padding:8px;color:var(--tx3);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bd)">Setor</th>
+   <th style="text-align:right;padding:8px;color:var(--tx3);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bd)">Atend</th>
+   <th style="text-align:right;padding:8px 12px;color:var(--tx3);font-weight:600;font-size:10px;border-bottom:1px solid var(--bd)">Méd/dia</th>
+   <th style="text-align:left;padding:8px 12px;color:var(--tx3);font-weight:600;font-size:10px;border-bottom:1px solid var(--bd);min-width:130px">Leituras</th>
+   ${dayHdr}
+  </tr></thead>
+  <tbody>${bodyRows}</tbody>
+ </table></div>
+ <div style="margin-top:12px;font-size:10.5px;color:var(--tx3);line-height:1.5"><b>Atend</b> = total de atendimentos no período. <b>Méd/dia</b> = atendimentos por dia útil (verde ≥3, amarelo 1–3, vermelho &lt;1). <b>Leituras</b> = % de feedbacks lidos pelo vendedor. ⚠ = volume baixo (&lt;5).</div>`;
+
+ container.innerHTML = html;
 }
+
 
 function fmtMonthTL(m) {
  return ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(m)];
